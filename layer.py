@@ -6,14 +6,13 @@ class fully_connected_layer:
         self.input_size = num_of_input
         self.output_size = num_of_output
         self.weights = numpy.random.randn(self.output_size, self.input_size)
-        self.bias = numpy.random.randn(self.output_size)
+        self.bias = numpy.zeros(self.output_size)
         if (w.shape == self.weights.shape and b.shape == self.bias.shape):
             self.weights = w
             self.bias = b
         else:
             print "Initializing weights for fully_connected_layer..."
             self.weights = self.weights*numpy.sqrt(2./(self.input_size+1))
-            self.bias = self.bias*numpy.sqrt(2./(self.input_size+1))
         self.is_valid_input = False
         self.input_shape = None
 
@@ -48,24 +47,20 @@ class fully_connected_layer:
         output += self.bias
         return output
 
-    def update_weights(self, gradient_weights, gradient_bias, learning_rate=0.01):
-        self.weights = self.weights-learning_rate*gradient_weights
-        self.bias = self.bias-learning_rate*gradient_bias
+    def update_weights(self, delta_weights, delta_bias):
+        self.weights = self.weights+delta_weights
+        self.bias = self.bias+delta_bias
 
-    def propagate_backward(self, error_array, input_array, is_batching=False, learning_rate=0.01):
+    def propagate_backward(self, error_array, input_array):
         reshaped_error = error_array.reshape(1, self.output_size)
         gradient_bias = reshaped_error.flatten()
         gradient_weights = numpy.outer(input_array, reshaped_error).T
         new_error = numpy.inner(self.weights.T, reshaped_error)
         new_error = new_error.reshape(self.input_shape)
-        if (is_batching):
-            return (new_error, gradient_weights, gradient_bias)
-        else:
-            self.update_weights(gradient_weights, gradient_bias, learning_rate)
-            return new_error
+        return (new_error, gradient_weights, gradient_bias)
 
-    def regularize_weights(self, lambda_l2=0.01):
-        self.weights = self.weights-lambda_l2*numpy.square(self.weights)
+    def regularize_weights(self, l1=0.1, l2=0.01):
+        self.weights = self.weights-l1*numpy.fabs(self.weights)-l2*numpy.square(self.weights)
 
 class convolutional_layer:
     def __init__(self, input_depth, num_filter, field_size, stride, zero_pad, w, b):
@@ -75,14 +70,13 @@ class convolutional_layer:
         self.s = stride
         self.p = zero_pad
         self.weights = numpy.random.randn(self.n, self.d, self.f, self.f)
-        self.bias = numpy.random.randn(self.n)
+        self.bias = numpy.zeros((self.n))
         if (w.shape == self.weights.shape and b.shape == self.bias.shape):
             self.weights = w
             self.bias = b
         else:
             print "Initializing weights for convolutional_layer..."
             self.weights = self.weights*numpy.sqrt(2./(self.d*self.f*self.f+1))
-            self.bias = self.bias*numpy.sqrt(2./(self.d*self.f*self.f+1))
         self.is_valid_input = False
         self.padded_input = None
         self.activation_derivative_mask = None
@@ -123,14 +117,17 @@ class convolutional_layer:
             print "zero_pad:",self.p
         return self.is_valid_input
 
-    def propagate_forward(self, input_array, ReLU_alpha=0.01):
+    def propagate_forward(self, input_array, ReLU_alpha=0.1):
         input_shape = input_array.shape
         padded_input_h = input_shape[1]+2*self.p
         padded_input_w = input_shape[2]+2*self.p
         padded_input_h_end = padded_input_h-self.p
         padded_input_w_end = padded_input_w-self.p
-        self.padded_input = numpy.zeros((input_shape[0], padded_input_h, padded_input_w))
-        self.padded_input[:,self.p:padded_input_h_end,self.p:padded_input_w_end] = input_array
+        if (self.p > 0):
+            self.padded_input = numpy.zeros((input_shape[0], padded_input_h, padded_input_w))
+            self.padded_input[:,self.p:padded_input_h_end,self.p:padded_input_w_end] = input_array
+        else:
+            self.padded_input = input_array
         output_h = ((input_shape[1]-self.f+2*self.p)/self.s)+1
         output_w = ((input_shape[2]-self.f+2*self.p)/self.s)+1
         output_d = self.n
@@ -155,11 +152,11 @@ class convolutional_layer:
                             self.activation_derivative_mask[filter_cnt][h_cnt][w_cnt] = ReLU_alpha
         return output
 
-    def update_weights(self, gradient_weights, gradient_bias, learning_rate=0.01):
-        self.weights = self.weights-learning_rate*gradient_weights
-        self.bias = self.bias-learning_rate*gradient_bias
+    def update_weights(self, delta_weights, delta_bias):
+        self.weights = self.weights+delta_weights
+        self.bias = self.bias+delta_bias
 
-    def propagate_backward(self, error_array, is_batching=False, learning_rate=0.01):
+    def propagate_backward(self, error_array):
         masked_error = self.activation_derivative_mask*error_array
         gradient_weights = numpy.zeros(self.weights.shape)
         gradient_bias = numpy.zeros(self.bias.shape)
@@ -183,14 +180,10 @@ class convolutional_layer:
         new_error_h_end = new_error.shape[1]-self.p
         new_error_w_end = new_error.shape[2]-self.p
         new_error = new_error[:,self.p:new_error_h_end,self.p:new_error_w_end]
-        if (is_batching):
-            return (new_error, gradient_weights, gradient_bias)
-        else:
-            self.update_weights(gradient_weights, gradient_bias, learning_rate)
-            return new_error
+        return (new_error, gradient_weights, gradient_bias)
 
-    def regularize_weights(self, lambda_l2=0.01):
-        self.weights = self.weights-lambda_l2*numpy.square(self.weights)
+    def regularize_weights(self, l1=0.1, l2=0.01):
+        self.weights = self.weights-l1*numpy.fabs(self.weights)-l2*numpy.square(self.weights)
 
 class max_pooling_layer:
     def __init__(self, input_depth, field_size, stride):
@@ -280,7 +273,9 @@ class softmax_layer:
 
     def propagate_forward(self, input_array):
         self.input_shape = input_array.shape
-        reshaped_input = numpy.exp(input_array.flatten())
+        reshaped_input = input_array.flatten()
+        reshaped_input = reshaped_input-numpy.max(reshaped_input)
+        reshaped_input = numpy.exp(reshaped_input)
         output = reshaped_input/numpy.sum(reshaped_input)
         self.activation_derivative_mask = output*(1-output)
         return output

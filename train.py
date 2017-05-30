@@ -15,6 +15,52 @@ def change_image_format(input_image):
     output_image = numpy.append(output_image,b,axis=0)
     return output_image
 
+class Adam_optimizer:
+    def __init__(self, learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8):
+        self.m_w = 0
+        self.v_w = 0
+        self.m_b = 0
+        self.v_b = 0
+        self.lr = learning_rate
+        self.b1 = beta_1
+        self.b2 = beta_2
+        self.ep = epsilon
+
+    def save_optimizer(self, file_path):
+        pickle.dump(self, open(file_path, 'w'))
+
+    def load_optimizer(self, file_path):
+        print "Loading Adam_optimizer..."
+        old_one = pickle.load(open(file_path, 'r'))
+        self.m_w = old_one.m_w
+        self.v_w = old_one.v_w
+        self.m_b = old_one.m_b
+        self.v_b = old_one.v_b
+        self.lr = old_one.lr
+        self.b1 = old_one.b1
+        self.b2 = old_one.b2
+        self.ep = old_one.ep
+        print "Loading completed..."
+
+    def calculate_delta(self, gradient_weights, gradient_bias):
+        self.m_w = self.b1*self.m_w+(1.0-self.b1)*gradient_weights
+        self.v_w = self.b2*self.v_w+(1.0-self.b2)*numpy.square(gradient_weights)
+        m_non_biased = self.m_w/(1.0-self.b1)
+        v_non_biased = self.v_w/(1.0-self.b2)
+        delta_weights = -(self.lr*m_non_biased)/(numpy.sqrt(v_non_biased)+self.ep)
+        self.m_b = self.b1*self.m_b+(1.0-self.b1)*gradient_bias
+        self.v_b = self.b2*self.v_b+(1.0-self.b2)*numpy.square(gradient_bias)
+        m_non_biased = self.m_b/(1.0-self.b1)
+        v_non_biased = self.v_b/(1.0-self.b2)
+        delta_bias = -(self.lr*m_non_biased)/(numpy.sqrt(v_non_biased)+self.ep)
+        return (delta_weights, delta_bias)
+
+    def reset(self):
+        self.m_w = 0
+        self.v_w = 0
+        self.m_b = 0
+        self.v_b = 0
+
 sample_dir_path = "/cifar/"
 #train_list_path = sample_dir_path+"train.list"
 labels_path = sample_dir_path+"labels.txt"
